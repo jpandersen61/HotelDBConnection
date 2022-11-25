@@ -2,56 +2,65 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Data.SqlClient;
+using System.Reflection;
 
 namespace HotelDBConnection
 {
     class DBClient
     {
         //Database connection string - replace it with the connnection string to your own database 
-        string connectionString = @"Data Source = (localdb)\MSSQLLocalDB;Initial Catalog = HotelDatabase; Integrated Security = True; Connect Timeout = 30; Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
-        private int GetMaxHotelNo(SqlConnection connection)
+        const string connectionString = @"Data Source = (localdb)\ProjectModels;Initial Catalog = HotelFacilityDB; Integrated Security = True; Connect Timeout = 30; Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        
+        private int GetMaxDBKey<T>(SqlConnection connection)
         {
-            Console.WriteLine("Calling -> GetMaxHotelNo");
+            //Keep type T's name - e.g. 'Hotel' 
+            string typeName = typeof(T).Name;
 
-            //This SQL command will fetch one row from the DemoHotel table: The one with the max Hotel_No
-            string queryStringMaxHotelNo = "SELECT  MAX(Hotel_No)  FROM DemoHotel";
-            Console.WriteLine($"SQL applied: {queryStringMaxHotelNo}");
+            Console.WriteLine($"Calling -> GetMaxDBKey<{typeName}>");
+
+            //This SQL command will fetch one row from the Demo<typeName> table:
+            //The row with the max primary key
+            string queryStringMaxDBKey = $"SELECT MAX({typeName}_No) FROM Demo{typeName}";
+            Console.WriteLine($"SQL applied: {queryStringMaxDBKey}");
 
             //Apply SQL command
-            SqlCommand command = new SqlCommand(queryStringMaxHotelNo, connection);
+            SqlCommand command = new SqlCommand(queryStringMaxDBKey, connection);
             SqlDataReader reader = command.ExecuteReader();
 
-            //Assume undefined value 0 for max hotel_no
-            int MaxHotel_No = 0;
+            //Assume undefined value 0 for max database key
+            int MaxDBKey = 0;
 
             //Is there any rows in the query
-            if  (reader.Read())
+            if (reader.Read())
             {
-                //Yes, get max hotel_no
-                MaxHotel_No = reader.GetInt32(0); //Reading int fro 1st column
+                //Yes, get max database
+                MaxDBKey = reader.GetInt32(0); //Reading int from 1st column - Always assuming int
             }
 
             //Close reader
             reader.Close();
-            
-            Console.WriteLine($"Max hotel#: {MaxHotel_No}");
+
+            Console.WriteLine($"Max database key#: {MaxDBKey}");
             Console.WriteLine();
 
-            //Return max hotel_no
-            return MaxHotel_No;
-        }
-
-        private int DeleteHotel(SqlConnection connection, int hotel_no)
+            //Return max database table key - in fact primary of the table 
+            return MaxDBKey;
+        }     
+        private int Delete<T>(SqlConnection connection, int item_no)
         {
-            Console.WriteLine("Calling -> DeleteHotel");
+            //Keep type T's name - e.g. 'Hotel' 
+            string typeName = typeof(T).Name;
 
-            //This SQL command will delete one row from the DemoHotel table: The one with primary key hotel_No
-            string deleteCommandString = $"DELETE FROM DemoHotel  WHERE Hotel_No = {hotel_no}";
+            Console.WriteLine($"Calling -> Delete<{typeName}>");
+
+            //This SQL command will delete one row from the Demo<typeName> table:
+            //The row with primary key item_No
+            string deleteCommandString = $"DELETE FROM Demo{typeName} WHERE {typeName}_No = {item_no}";
             Console.WriteLine($"SQL applied: {deleteCommandString}");
 
             //Apply SQL command
             SqlCommand command = new SqlCommand(deleteCommandString, connection);
-            Console.WriteLine($"Deleting hotel #{hotel_no}");
+            Console.WriteLine($"Deleting item #{item_no}");
             int numberOfRowsAffected = command.ExecuteNonQuery();
 
             Console.WriteLine($"Number of rows affected: {numberOfRowsAffected}");
@@ -60,18 +69,76 @@ namespace HotelDBConnection
             //Return number of rows affected
             return numberOfRowsAffected;
         }
-
-        private int UpdateHotel(SqlConnection connection, Hotel hotel)
+        private int Update<T>(SqlConnection connection, T t)
         {
-            Console.WriteLine("Calling -> UpdateHotel");
+            //Keep type T's name - e.g. 'Hotel' 
+            string typeName = typeof(T).Name;
 
-            //This SQL command will update one row from the DemoHotel table: The one with primary key hotel_No
-            string updateCommandString = $"UPDATE DemoHotel SET Name='{hotel.Name}', Address='{hotel.Address}' WHERE Hotel_No = {hotel.Hotel_No}";
+            Console.WriteLine($"Calling -> Update<{typeName}>");
+
+            //Compose SQL command will update one row from the Demo<typeName> table:
+            //The row with primary key <typeName>_No
+            
+            //Item with primary key 'itemId' not known yet
+            string itemId = null;
+            
+            //Start composing SQL command string
+            string updateCommandString = $"UPDATE Demo{typeName} SET ";
+
+            //Find out how many properties that parameter t of type T has
+            int numOfProps = t.GetType().GetProperties().Length;
+
+            //Get paramter t's PropertyInfo (reflection information)  
+            PropertyInfo[] pInfo = t.GetType().GetProperties();
+
+            //Iterate over the properties  in order to construct the UPDATE SQL stateemnt 
+            for (int i = 0; i < numOfProps; i++)
+            {
+                //Prepend comma separator to values - skip for the first value
+                if (i > 1)
+                {
+                    updateCommandString += ",";
+                }
+
+                //First property?
+                if (i == 0)
+                {
+                    //Keep item id - primary of the database row to be updated
+                    itemId += t.GetType().GetProperties()[i].GetValue(t, null);
+                }
+                else
+                {
+                    //Otherwise add to values part of UPDATE statement
+
+                    //Append name of the i'th property/attribute and the '=' sign
+                    updateCommandString += pInfo[i].Name;
+                    updateCommandString += "=";
+
+                    //If string value prepend ' to value
+                    if (pInfo[i].PropertyType.Name == "String")
+                    {
+                        updateCommandString += "'";
+                    }
+
+                    //Append value 
+                    updateCommandString += t.GetType().GetProperties()[i].GetValue(t, null);
+
+                    //If string value append ' to value
+                    if (pInfo[i].PropertyType.Name == "String")
+                    {
+                        updateCommandString += "'";
+                    }
+                }
+            }
+
+            //Append WHERE clause 
+            updateCommandString += $" WHERE {typeName}_No = {itemId}";
+
             Console.WriteLine($"SQL applied: {updateCommandString}");
 
             //Apply SQL command
             SqlCommand command = new SqlCommand(updateCommandString, connection);
-            Console.WriteLine($"Updating hotel #{hotel.Hotel_No}");
+            Console.WriteLine($"Updating item #{itemId}");
             int numberOfRowsAffected = command.ExecuteNonQuery();
 
             Console.WriteLine($"Number of rows affected: {numberOfRowsAffected}");
@@ -80,69 +147,123 @@ namespace HotelDBConnection
             //Return number of rows affected
             return numberOfRowsAffected;
         }
-
-        private int InsertHotel(SqlConnection connection, Hotel hotel)
+        private int Insert<T>(SqlConnection connection, T t) 
+        //Require the T has a default constructor - i.e. one without parameters    
+        where T : new()
         {
-            Console.WriteLine("Calling -> InsertHotel");
+            //Keep type T's name - e.g. 'Hotel' 
+            string typeName = typeof(T).Name;
 
-            //This SQL command will insert one row into the DemoHotel table with primary key hotel_No
-            string insertCommandString = $"INSERT INTO DemoHotel VALUES({hotel.Hotel_No}, '{hotel.Name}', '{hotel.Address}')";
+            Console.WriteLine($"Calling -> Insert<{typeName}>");
+
+            //This SQL command will insert one row into the Demo<typeName> table
+            //with primary key as first the first property in t
+
+            //Construct start of string 
+            string insertCommandString = $"INSERT INTO Demo{typeName} VALUES(";
+
+            //Find out how many properties that parameter t of type T has
+            int numOfProps = t.GetType().GetProperties().Length;
+
+            //Get paramter t's PropertyInfo (reflection information)
+            PropertyInfo[] pInfo = t.GetType().GetProperties();
+
+            //Construct value part by iterating over properties of t
+            for (int i = 0; i < numOfProps; i++)
+            {
+                //Prepend comma to value - except for the first value 
+                if (i > 0)
+                {
+                    insertCommandString += ",";
+                }
+
+                //Prepend ' to value - if it is a string
+                if (pInfo[i].PropertyType.Name == "String")
+                {
+                    insertCommandString += "'";
+                }
+
+                //Append the actual value of the property
+                insertCommandString += t.GetType().GetProperties()[i].GetValue(t, null);
+
+                //Append ' to value - if it is a string
+                if (pInfo[i].PropertyType.Name == "String")
+                {
+                    insertCommandString += "'";
+                }
+            }
+            
+            //Finish SQL statement
+            insertCommandString += ")";
+
             Console.WriteLine($"SQL applied: {insertCommandString}");
 
             //Apply SQL command
             SqlCommand command = new SqlCommand(insertCommandString, connection);
-            
-            Console.WriteLine($"Creating hotel #{hotel.Hotel_No}");
+
+            Console.WriteLine($"Creating item");
             int numberOfRowsAffected = command.ExecuteNonQuery();
-            
+
             Console.WriteLine($"Number of rows affected: {numberOfRowsAffected}");
             Console.WriteLine();
 
             //Return number of rows affected 
             return numberOfRowsAffected;
         }
-
-        private List<Hotel> ListAllHotels(SqlConnection connection)
+        private List<T> ListAll<T>(SqlConnection connection)
+        //Require the T has a default constructor - i.e. one without parameters    
+        where T : new()
         {
-            Console.WriteLine("Calling -> ListAllHotels");
+            //Keep type T's name - e.g. 'Hotel' 
+            string typeName = typeof(T).Name;
 
-            //This SQL command will fetch all rows and columns from the DemoHotel table
-            string queryStringAllHotels = "SELECT * FROM DemoHotel";
-            Console.WriteLine($"SQL applied: {queryStringAllHotels}");
+            Console.WriteLine($"Calling -> ListAll: {typeName}");
+
+            //This SQL command will fetch all rows and columns from the Demo<typeName> table
+            string queryStringAllItems = $"SELECT * FROM Demo{typeName}";
+            Console.WriteLine($"SQL applied: {queryStringAllItems}");
 
             //Apply SQL command
-            SqlCommand command = new SqlCommand(queryStringAllHotels, connection);
+            SqlCommand command = new SqlCommand(queryStringAllItems, connection);
             SqlDataReader reader = command.ExecuteReader();
-            
-            Console.WriteLine("Listing all hotels:");
 
-            //NO rows in the query 
+            Console.WriteLine($"Listing all {typeName} items:");
+
+            //NO rows in the query            
             if (!reader.HasRows)
             {
                 //End here
-                Console.WriteLine("No hotels in database");
+                Console.WriteLine($"No such items ({typeName}) in database");
                 reader.Close();
-                
-                //Return null for 'no hotels found'
+
+                //Return null for 'no items found'
                 return null;
             }
 
-            //Create list of hotels found
-            List<Hotel> hotels = new List<Hotel>();
+            //Create list of items found
+            List<T> items = new List<T>();
             while (reader.Read())
             {
-                //If we reached here, there is still one hotel to be put into the list 
-                Hotel nextHotel = new Hotel()
+                //If we reached here, there is still one item to be put into the list 
+
+                //Create a new object of class T - it could be a Hotel
+                T nextItem = new T();
+                
+                //Keep number of fields/attributes in the query result 
+                int fc = reader.FieldCount;
+                
+                //Iterate over the fields in order to fill in the values into the T object 
+                for (int i = 0; i < fc; i++)
                 {
-                    Hotel_No = reader.GetInt32(0), //Reading int from 1st column
-                    Name = reader.GetString(1),    //Reading string from 2nd column
-                    Address = reader.GetString(2)  //Reading string from 3rd column
-                };
+                    Object val = reader.GetValue(i);
+                    string attributeName = reader.GetName(i);
+                    nextItem.GetType().GetProperty(attributeName).SetValue(nextItem, val);
+                }
+                
+                //Add T object to list
+                items.Add(nextItem);
 
-                //Add hotel to list
-                hotels.Add(nextHotel);
-
-                Console.WriteLine(nextHotel);
+                Console.WriteLine(nextItem);
             }
 
             //Close reader
@@ -150,103 +271,197 @@ namespace HotelDBConnection
             Console.WriteLine();
 
             //Return list of hotels
-            return hotels;
+            return items;
         }
-
-        private Hotel GetHotel(SqlConnection connection, int hotel_no)
+        private T Get<T>(SqlConnection connection, int item_no)
+        //Require the T has a default constructor - i.e. one without parameters
+        where T : new()
         {
-            Console.WriteLine("Calling -> GetHotel");
+            //Keep type T's name - e.g. 'Hotel'
+            string typeName = typeof(T).Name;
 
-            //This SQL command will fetch the row with primary key hotel_no from the DemoHotel table
-            string queryStringOneHotel = $"SELECT * FROM DemoHotel WHERE hotel_no = {hotel_no}";
-            Console.WriteLine($"SQL applied: {queryStringOneHotel}");
+            //Let result have it's default value
+            T result = default;
 
-            //Prepare SQK command
-            SqlCommand command = new SqlCommand(queryStringOneHotel, connection);
+            Console.WriteLine($"Calling -> Get<{typeName}>");
+
+            //This SQL command will fetch the row with primary key item_no from the Demo<typeName> table
+            string queryStringOneItem = $"SELECT * FROM Demo{typeName} WHERE {typeName}_no = {item_no}";
+            Console.WriteLine($"SQL applied: {queryStringOneItem}");
+
+            //Apply SQL command
+            SqlCommand command = new SqlCommand(queryStringOneItem, connection);
             SqlDataReader reader = command.ExecuteReader();
 
-            Console.WriteLine($"Finding hotel#: {hotel_no}");
+            Console.WriteLine($"Finding item#: {item_no}");
 
             //NO rows in the query? 
             if (!reader.HasRows)
             {
                 //End here
-                Console.WriteLine("No hotels in database");
+                Console.WriteLine($"No {typeName} item in database");
                 reader.Close();
 
-                //Return null for 'no hotel found'
-                return null;
+                //Return null for 'no item found'
+                return result;
             }
 
-            //Fetch hotel object from teh database
-            Hotel hotel = null; 
+            //Fetch item object from the database           
             if (reader.Read())
             {
-                hotel = new Hotel()
-                {
-                    Hotel_No = reader.GetInt32(0), //Reading int fro 1st column
-                    Name = reader.GetString(1),    //Reading string from 2nd column
-                    Address = reader.GetString(2)  //Reading string from 3rd column
-                };
+                //Create a new object of class T - it could be a Hotel
+                result = new T();
 
-                Console.WriteLine(hotel);
+                //Keep number of fields/attributes in the query result 
+                int fc = reader.FieldCount;
+
+                //Iterate over the fields in order to fill in the values into the T object
+                for (int i = 0; i < fc; i++)
+                {
+                    Object val = reader.GetValue(i);
+                    string attributeName = reader.GetName(i);
+                    result.GetType().GetProperty(attributeName).SetValue(result, val);
+                }
+                Console.WriteLine(result);
             }
 
             //Close reader
             reader.Close();
             Console.WriteLine();
 
-            //Return found hotel
-            return hotel;
+            //Return found item
+            return result;
         }
         public void Start()
         {
             //Apply 'using' to connection (SqlConnection) in order to call Dispose (interface IDisposable) 
             //whenever the 'using' block exits
+            #pragma warning disable IDE0063
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
                 //Open connection
                 connection.Open();
-                
+
+                Console.WriteLine();
+                Console.WriteLine("PROCESSING HOTEL CRUD");
+                Console.WriteLine();
+
                 //List all hotels in the database
-                ListAllHotels(connection);
+                ListAll<Hotel>(connection);
 
                 //Create a new hotel with primary key equal to current max primary key plus 1
                 Hotel newHotel = new Hotel()
                 {
-                    Hotel_No = GetMaxHotelNo(connection) + 1,
+                    Hotel_No = GetMaxDBKey<Hotel>(connection) + 1,
                     Name = "New Hotel",
                     Address = "Maglegaardsvej 2, 4000 Roskilde"
                 };
 
-                //Insert the hotel into the database
-                InsertHotel(connection, newHotel);
+                Insert<Hotel>(connection, newHotel);
 
-                //List all hotels including the the newly inserted one
-                ListAllHotels(connection);
+                //List all hotels in the database
+                ListAll<Hotel>(connection);
 
                 //Get the newly inserted hotel from the database in order to update it 
-                Hotel hotelToBeUpdated = GetHotel(connection, newHotel.Hotel_No);
+                Hotel hotelToBeUpdated = Get<Hotel>(connection, newHotel.Hotel_No);
 
                 //Alter Name and Addess properties
                 hotelToBeUpdated.Name += "(updated)";
                 hotelToBeUpdated.Address += "(updated)";
 
                 //Update the hotel in the database 
-                UpdateHotel(connection, hotelToBeUpdated);
+                Update<Hotel>(connection, hotelToBeUpdated);
 
                 //List all hotels including the updated one
-                ListAllHotels(connection);
+                ListAll<Hotel>(connection);
 
                 //Get the updated hotel in order to delete it
-                Hotel hotelToBeDeleted = GetHotel(connection, hotelToBeUpdated.Hotel_No);
+                Hotel hotelToBeDeleted = Get<Hotel>(connection, hotelToBeUpdated.Hotel_No);
 
                 //Delete the hotel
-                DeleteHotel(connection, hotelToBeDeleted.Hotel_No);
+                Delete<Hotel>(connection, hotelToBeDeleted.Hotel_No);
 
                 //List all hotels - now without the deleted one
-                ListAllHotels(connection);
+                ListAll<Hotel>(connection);
+
+                Console.WriteLine();
+                Console.WriteLine("PROCESSING FACILITY CRUD");
+                Console.WriteLine();
+
+                //List all facilities in the database
+                ListAll<Facility>(connection);
+
+                //Create a new facility with primary key equal to current max primary key plus 1
+                Facility newFacility = new Facility()
+                {
+                    Facility_No  = GetMaxDBKey<Facility>(connection) + 1,
+                    Name = "New Facility",
+                    PricePerUnit = 42
+                };
+
+                Insert<Facility>(connection, newFacility);
+
+                //List all facilities in the database
+                ListAll<Facility>(connection);
+
+                //Get the newly inserted facility from the database in order to update it                
+                Facility facilityToBeUpdated = Get<Facility>(connection, newFacility.Facility_No);
+
+                //Alter Name and PricePerUnit properties
+                facilityToBeUpdated.Name += "(updated)";
+                facilityToBeUpdated.PricePerUnit += 1;
+
+                //Update the facility in the database 
+                Update<Facility>(connection, facilityToBeUpdated);
+
+                //List all facilities including the updated one
+                ListAll<Facility>(connection);
+
+                //Get the updated facility in order to delete it
+                Facility facilityToBeDeleted = Get<Facility>(connection, facilityToBeUpdated.Facility_No);
+
+                //Delete the facility
+                Delete<Facility>(connection, facilityToBeDeleted.Facility_No);
+
+                //List all facilities - now without the deleted one
+                ListAll<Facility>(connection);
+
+                Console.WriteLine();
+                Console.WriteLine("PROCESSING HOTEL-FACILITY CRUD");
+                Console.WriteLine();
+
+                //List all hotel facilities
+                ListAll<HotelFacility>(connection);
+
+                //Create a new hotel-facility with primary key equal to current max primary key plus 1
+                HotelFacility newHotelFacility = new HotelFacility()
+                {
+                    HotelFacility_No = GetMaxDBKey<HotelFacility>(connection) + 1,
+                    
+                    //In this case we use max primary key on Hotel
+                    Hotel_No = GetMaxDBKey<Hotel>(connection),
+
+                    //In this case we use max primary key on Facility
+                    Facility_No = GetMaxDBKey<Facility>(connection)
+                };
+
+                Insert<HotelFacility>(connection, newHotelFacility);
+
+                //List all hotel-facilities in the database
+                ListAll<HotelFacility>(connection);
+
+                //Get the newly inserted hotel-facility from the database in order to delete it 
+                HotelFacility hotelFacilityToBeDeleted = Get<HotelFacility>(connection, newHotelFacility.HotelFacility_No);
+
+                //Delete the hotel-facility
+                Delete<HotelFacility>(connection, hotelFacilityToBeDeleted.HotelFacility_No);
+
+                //List all hotel-facilities - now without the deleted one
+                ListAll<HotelFacility>(connection);
             }
+            #pragma warning restore IDE0063
+        
         }
+
     }
 }

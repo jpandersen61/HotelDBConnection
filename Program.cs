@@ -1,6 +1,7 @@
 ﻿using System;
+using HotelDBConnection;
 
-namespace HotelDBConnection
+namespace HotelDBConnectionFacility
 {
     class Program
     {
